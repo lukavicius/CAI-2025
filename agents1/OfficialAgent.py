@@ -1,4 +1,5 @@
 import sys, random, enum, ast, time, csv
+from timeit import default_timer as timer
 import numpy as np
 from matrx import grid_world
 from brains1.ArtificialBrain import ArtificialBrain
@@ -74,6 +75,8 @@ class BaselineAgent(ArtificialBrain):
         self._received_messages = []
         self._moving = False
         self.task_names = ["search", "remove", "rescue"]
+        self._supposed_to_remove = False
+        self._ticks_for_removal_response = 0
 
     def initialize(self):
         # Initialization of the state tracker and navigation algorithm
@@ -380,10 +383,13 @@ class BaselineAgent(ArtificialBrain):
                                 \n clock - removal time: 5 seconds \n afstand - distance between us: ' + self._distance_human,
                                               'RescueBot')
                             self._waiting = True
+                            self._ticks_for_removal_response = state['World']['nr_ticks']
                             # Determine the next area to explore if the human tells the agent not to remove the obstacle
                         if self.received_messages_content and self.received_messages_content[
                             -1] == 'Continue' and not self._remove:
-                            self._change_trait(trustBeliefs, self.task_names[1], "willingness", -0.2)
+                            self._change_trait(trustBeliefs, self.task_names[1], "willingness", -0.4)
+                            self._check_responsiveness(state, trustBeliefs)
+                            self._if_started_timer_removal = False
                             self._answered = True
                             self._waiting = False
                             # Add area to the to do list
@@ -392,9 +398,9 @@ class BaselineAgent(ArtificialBrain):
                         # Wait for the human to help removing the obstacle and remove the obstacle together
                         if self.received_messages_content and self.received_messages_content[
                             -1] == 'Remove' or self._remove:
+                            self._check_responsiveness(state, trustBeliefs)
                             if not self._remove:
                                 self._answered = True
-                            self._change_trait(trustBeliefs, self.task_names[1], "willingness", 0.2)
                             # Tell the human to come over and be idle untill human arrives
                             if not state[{'is_human_agent': True}]:
                                 self._send_message('Please come to ' + str(self._door['room_name']) + ' to remove rock.',
@@ -420,9 +426,12 @@ class BaselineAgent(ArtificialBrain):
                                 self._searched_rooms).replace('area ', '') + ' \
                                 \n clock - removal time: 10 seconds', 'RescueBot')
                             self._waiting = True
+                            self._ticks_for_removal_response = state['World']['nr_ticks']
                         # Determine the next area to explore if the human tells the agent not to remove the obstacle
                         if self.received_messages_content and self.received_messages_content[
                             -1] == 'Continue' and not self._remove:
+                            self._change_trait(trustBeliefs, self.task_names[1], "willingness", -0.4)
+                            self._check_responsiveness(state, trustBeliefs)
                             self._answered = True
                             self._waiting = False
                             # Add area to the to do list
@@ -431,6 +440,7 @@ class BaselineAgent(ArtificialBrain):
                         # Remove the obstacle if the human tells the agent to do so
                         if self.received_messages_content and self.received_messages_content[
                             -1] == 'Remove' or self._remove:
+                            self._check_responsiveness(state, trustBeliefs)
                             if not self._remove:
                                 self._answered = True
                                 self._waiting = False
@@ -458,10 +468,13 @@ class BaselineAgent(ArtificialBrain):
                                 \n clock - removal time together: 3 seconds \n afstand - distance between us: ' + self._distance_human + '\n clock - removal time alone: 20 seconds',
                                               'RescueBot')
                             self._waiting = True
+                            self._ticks_for_removal_response = state['World']['nr_ticks']
                         # Determine the next area to explore if the human tells the agent not to remove the obstacle          
                         if self.received_messages_content and self.received_messages_content[
                             -1] == 'Continue' and not self._remove:
-                            self._change_trait(trustBeliefs, self.task_names[1], "willingness", -0.2)
+                            self._change_trait(trustBeliefs, self.task_names[1], "willingness", -0.4)
+                            self._check_responsiveness(state, trustBeliefs)
+                            self._if_started_timer_removal = False
                             self._answered = True
                             self._waiting = False
                             # Add area to the to do list
@@ -470,6 +483,7 @@ class BaselineAgent(ArtificialBrain):
                         # Remove the obstacle alone if the human decides so
                         if self.received_messages_content and self.received_messages_content[
                             -1] == 'Remove alone' and not self._remove:
+                            self._check_responsiveness(state, trustBeliefs)
                             self._answered = True
                             self._waiting = False
                             self._send_message('Removing stones blocking ' + str(self._door['room_name']) + '.',
@@ -480,9 +494,10 @@ class BaselineAgent(ArtificialBrain):
                         # Remove the obstacle together if the human decides so
                         if self.received_messages_content and self.received_messages_content[
                             -1] == 'Remove together' or self._remove:
+                            self._check_responsiveness(state, trustBeliefs)
                             if not self._remove:
                                 self._answered = True
-                            self._change_trait(trustBeliefs, self.task_names[1], "willingness", 0.2)
+                            self._change_trait(trustBeliefs, self.task_names[1], "willingness", 0.3)
                             # Tell the human to come over and be idle untill human arrives
                             if not state[{'is_human_agent': True}]:
                                 self._send_message(
@@ -578,7 +593,6 @@ class BaselineAgent(ArtificialBrain):
                                     self._send_message('Found ' + vic + ' in ' + self._door[
                                         'room_name'] + ' because you told me ' + vic + ' was located here.',
                                                       'RescueBot')
-                                    self._change_trait(trustBeliefs, self.task_names[0], "competence", 0.2)
                                     # Add the area to the list with searched areas
                                     if self._door['room_name'] not in self._searched_rooms:
                                         self._searched_rooms.append(self._door['room_name'])
@@ -620,8 +634,8 @@ class BaselineAgent(ArtificialBrain):
                     self._send_message(self._goal_vic + ' not present in ' + str(self._door[
                                                                                     'room_name']) + ' because I searched the whole area without finding ' + self._goal_vic + '.',
                                       'RescueBot')
-                    self._change_trait(trustBeliefs, self.task_names[0], "willingness", -0.2)
-                    self._change_trait(trustBeliefs, self.task_names[0], "competence", -0.2)
+                    self._change_trait(trustBeliefs, self.task_names[0], "willingness", -0.4)
+                    self._change_trait(trustBeliefs, self.task_names[0], "competence", -0.4)
                     # Remove the victim location from memory
                     self._found_victim_logs.pop(self._goal_vic, None)
                     self._found_victims.remove(self._goal_vic)
@@ -829,12 +843,18 @@ class BaselineAgent(ArtificialBrain):
             for msg in mssgs:
                 # If a received message involves team members searching areas, add these areas to the memory of areas that have been explored
                 if msg.startswith("Search:"):
+                    if self._supposed_to_remove:
+                        self._change_trait(trustBeliefs, self.task_names[1], "competence", -0.4)
+                        self._supposed_to_remove = False
                     area = 'area ' + msg.split()[-1]
                     if area not in self._searched_rooms:
                         self._searched_rooms.append(area)
-                        self._change_trait(trustBeliefs, self.task_names[0], "willingness", 0.2)
+                        self._change_trait(trustBeliefs, self.task_names[0], "willingness", 0.3)
                 # If a received message involves team members finding victims, add these victims and their locations to memory
                 if msg.startswith("Found:"):
+                    if self._supposed_to_remove:
+                        self._change_trait(trustBeliefs, self.task_names[1], "competence", -0.4)
+                        self._supposed_to_remove = False
                     # Identify which victim and area it concerns
                     if len(msg.split()) == 6:
                         foundVic = ' '.join(msg.split()[1:4])
@@ -848,6 +868,7 @@ class BaselineAgent(ArtificialBrain):
                     if foundVic not in self._found_victims:
                         self._found_victims.append(foundVic)
                         self._found_victim_logs[foundVic] = {'room': loc}
+                        self._change_trait(trustBeliefs, self.task_names[0], "competence", 0.3)
                     if foundVic in self._found_victims and self._found_victim_logs[foundVic]['room'] != loc:
                         self._found_victim_logs[foundVic] = {'room': loc}
                     # Decide to help the human carry a found victim when the human's condition is 'weak'
@@ -858,6 +879,9 @@ class BaselineAgent(ArtificialBrain):
                         self._todo.append(foundVic)
                 # If a received message involves team members rescuing victims, add these victims and their locations to memory
                 if msg.startswith('Collect:'):
+                    if self._supposed_to_remove:
+                        self._change_trait(trustBeliefs, self.task_names[1], "competence", -0.4)
+                        self._supposed_to_remove = False
                     # Identify which victim and area it concerns
                     if len(msg.split()) == 6:
                         collectVic = ' '.join(msg.split()[1:4])
@@ -881,6 +905,8 @@ class BaselineAgent(ArtificialBrain):
                         self._rescue = 'together'
                 # If a received message involves team members asking for help with removing obstacles, add their location to memory and come over
                 if msg.startswith('Remove:'):
+                    self._change_trait(trustBeliefs, self.task_names[1], "competence", 0.3)
+                    self._supposed_to_remove = False
                     # Come over immediately when the agent is not carrying a victim
                     if not self._carrying:
                         # Identify at which location the human needs help
@@ -908,6 +934,13 @@ class BaselineAgent(ArtificialBrain):
                         area = 'area ' + msg.split()[-1]
                         self._send_message('Will come to ' + area + ' after dropping ' + self._goal_vic + '.',
                                           'RescueBot')
+                if msg.startswith("Detected"):
+                    if self._supposed_to_remove:
+                        self._change_trait(trustBeliefs, self.task_names[1], "competence", -0.4)
+                        self._supposed_to_remove = False
+                    self._change_trait(trustBeliefs, self.task_names[1], "willingness", 0.1)
+                    self._supposed_to_remove = True
+                    self.received_messages = [mssg for mssg in self.received_messages if not mssg.content.startswith("Detected")]
             # Store the current location of the human in memory
             if mssgs and mssgs[-1].split()[-1] in ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13',
                                                    '14']:
@@ -974,6 +1007,14 @@ class BaselineAgent(ArtificialBrain):
         trustBeliefs[self._human_name + task_name][trait] += difference
         trustBeliefs[self._human_name + task_name][trait] = np.clip(trustBeliefs[self._human_name + task_name][trait], -1, 1)
         print(self._human_name + " for " + task_name + " impacted " + trait + " by " + str(difference))
+
+    def _check_responsiveness(self, state, trustBeliefs):
+        ticks_diff = state['World']['nr_ticks'] - self._ticks_for_removal_response
+        print("Response after ticks:" + str(state['World']['nr_ticks'] - self._ticks_for_removal_response))
+        if ticks_diff > 60:
+            self._change_trait(trustBeliefs, self.task_names[1], "competence", -0.1)
+        else:
+            self._change_trait(trustBeliefs, self.task_names[1], "competence", 0.1)
 
     def _send_message(self, mssg, sender):
         '''
