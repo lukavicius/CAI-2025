@@ -941,6 +941,10 @@ class BaselineAgent(ArtificialBrain):
                     self._change_trait(trustBeliefs, self.task_names[1], "willingness", 0.1)
                     self._supposed_to_remove = True
                     self.received_messages = [mssg for mssg in self.received_messages if not mssg.content.startswith("Detected")]
+                if msg.startswith("Removed"):
+                    self._change_trait(trustBeliefs, self.task_names[1], "competence", 0.3)
+                    self._supposed_to_remove = False
+                    self.received_messages = [mssg for mssg in self.received_messages if not mssg.content.startswith("Removed")]
             # Store the current location of the human in memory
             if mssgs and mssgs[-1].split()[-1] in ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13',
                                                    '14']:
