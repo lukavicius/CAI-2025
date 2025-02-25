@@ -388,7 +388,7 @@ class BaselineAgent(ArtificialBrain):
                         if self.received_messages_content and self.received_messages_content[
                             -1] == 'Continue' and not self._remove:
                             self._change_trait(trustBeliefs, self.task_names[1], "willingness", -0.4)
-                            self._check_responsiveness(state, trustBeliefs)
+                            self._check_responsiveness(state, trustBeliefs, self.task_names[1])
                             self._if_started_timer_removal = False
                             self._answered = True
                             self._waiting = False
@@ -398,7 +398,7 @@ class BaselineAgent(ArtificialBrain):
                         # Wait for the human to help removing the obstacle and remove the obstacle together
                         if self.received_messages_content and self.received_messages_content[
                             -1] == 'Remove' or self._remove:
-                            self._check_responsiveness(state, trustBeliefs)
+                            self._check_responsiveness(state, trustBeliefs, self.task_names[1])
                             if not self._remove:
                                 self._answered = True
                             # Tell the human to come over and be idle untill human arrives
@@ -431,7 +431,7 @@ class BaselineAgent(ArtificialBrain):
                         if self.received_messages_content and self.received_messages_content[
                             -1] == 'Continue' and not self._remove:
                             self._change_trait(trustBeliefs, self.task_names[1], "willingness", -0.4)
-                            self._check_responsiveness(state, trustBeliefs)
+                            self._check_responsiveness(state, trustBeliefs, self.task_names[1])
                             self._answered = True
                             self._waiting = False
                             # Add area to the to do list
@@ -440,7 +440,7 @@ class BaselineAgent(ArtificialBrain):
                         # Remove the obstacle if the human tells the agent to do so
                         if self.received_messages_content and self.received_messages_content[
                             -1] == 'Remove' or self._remove:
-                            self._check_responsiveness(state, trustBeliefs)
+                            self._check_responsiveness(state, trustBeliefs, self.task_names[1])
                             if not self._remove:
                                 self._answered = True
                                 self._waiting = False
@@ -473,7 +473,7 @@ class BaselineAgent(ArtificialBrain):
                         if self.received_messages_content and self.received_messages_content[
                             -1] == 'Continue' and not self._remove:
                             self._change_trait(trustBeliefs, self.task_names[1], "willingness", -0.4)
-                            self._check_responsiveness(state, trustBeliefs)
+                            self._check_responsiveness(state, trustBeliefs, self.task_names[1])
                             self._if_started_timer_removal = False
                             self._answered = True
                             self._waiting = False
@@ -483,7 +483,7 @@ class BaselineAgent(ArtificialBrain):
                         # Remove the obstacle alone if the human decides so
                         if self.received_messages_content and self.received_messages_content[
                             -1] == 'Remove alone' and not self._remove:
-                            self._check_responsiveness(state, trustBeliefs)
+                            self._check_responsiveness(state, trustBeliefs, self.task_names[1])
                             self._answered = True
                             self._waiting = False
                             self._send_message('Removing stones blocking ' + str(self._door['room_name']) + '.',
@@ -494,7 +494,7 @@ class BaselineAgent(ArtificialBrain):
                         # Remove the obstacle together if the human decides so
                         if self.received_messages_content and self.received_messages_content[
                             -1] == 'Remove together' or self._remove:
-                            self._check_responsiveness(state, trustBeliefs)
+                            self._check_responsiveness(state, trustBeliefs, self.task_names[1])
                             if not self._remove:
                                 self._answered = True
                             self._change_trait(trustBeliefs, self.task_names[1], "willingness", 0.3)
@@ -1008,13 +1008,13 @@ class BaselineAgent(ArtificialBrain):
         trustBeliefs[self._human_name + task_name][trait] = np.clip(trustBeliefs[self._human_name + task_name][trait], -1, 1)
         print(self._human_name + " for " + task_name + " impacted " + trait + " by " + str(difference))
 
-    def _check_responsiveness(self, state, trustBeliefs):
+    def _check_responsiveness(self, state, trustBeliefs, task_name):
         ticks_diff = state['World']['nr_ticks'] - self._ticks_for_removal_response
         print("Response after ticks:" + str(state['World']['nr_ticks'] - self._ticks_for_removal_response))
         if ticks_diff > 60:
-            self._change_trait(trustBeliefs, self.task_names[1], "competence", -0.1)
+            self._change_trait(trustBeliefs, task_name, "competence", -0.1)
         else:
-            self._change_trait(trustBeliefs, self.task_names[1], "competence", 0.1)
+            self._change_trait(trustBeliefs, task_name, "competence", 0.1)
 
     def _send_message(self, mssg, sender):
         '''
