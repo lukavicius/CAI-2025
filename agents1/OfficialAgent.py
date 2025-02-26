@@ -77,6 +77,7 @@ class BaselineAgent(ArtificialBrain):
         self.task_names = ["search", "remove", "rescue"]
         self._supposed_to_remove = False
         self._ticks_for_removal_response = 0
+        self._ticks_started = False
 
     def initialize(self):
         # Initialization of the state tracker and navigation algorithm
@@ -384,6 +385,7 @@ class BaselineAgent(ArtificialBrain):
                                               'RescueBot')
                             self._waiting = True
                             self._ticks_for_removal_response = state['World']['nr_ticks']
+                            self._ticks_started = True
                             # Determine the next area to explore if the human tells the agent not to remove the obstacle
                         if self.received_messages_content and self.received_messages_content[
                             -1] == 'Continue' and not self._remove:
@@ -427,6 +429,7 @@ class BaselineAgent(ArtificialBrain):
                                 \n clock - removal time: 10 seconds', 'RescueBot')
                             self._waiting = True
                             self._ticks_for_removal_response = state['World']['nr_ticks']
+                            self._ticks_started = True
                         # Determine the next area to explore if the human tells the agent not to remove the obstacle
                         if self.received_messages_content and self.received_messages_content[
                             -1] == 'Continue' and not self._remove:
@@ -469,6 +472,7 @@ class BaselineAgent(ArtificialBrain):
                                               'RescueBot')
                             self._waiting = True
                             self._ticks_for_removal_response = state['World']['nr_ticks']
+                            self._ticks_started = True
                         # Determine the next area to explore if the human tells the agent not to remove the obstacle          
                         if self.received_messages_content and self.received_messages_content[
                             -1] == 'Continue' and not self._remove:
@@ -494,10 +498,11 @@ class BaselineAgent(ArtificialBrain):
                         # Remove the obstacle together if the human decides so
                         if self.received_messages_content and self.received_messages_content[
                             -1] == 'Remove together' or self._remove:
+                            if self._ticks_started:
+                                self._change_trait(trustBeliefs, self.task_names[1], "willingness", 0.3)
                             self._check_responsiveness(state, trustBeliefs, self.task_names[1])
                             if not self._remove:
                                 self._answered = True
-                            self._change_trait(trustBeliefs, self.task_names[1], "willingness", 0.3)
                             # Tell the human to come over and be idle untill human arrives
                             if not state[{'is_human_agent': True}]:
                                 self._send_message(
@@ -1013,12 +1018,15 @@ class BaselineAgent(ArtificialBrain):
         print(self._human_name + " for " + task_name + " impacted " + trait + " by " + str(difference))
 
     def _check_responsiveness(self, state, trustBeliefs, task_name):
-        ticks_diff = state['World']['nr_ticks'] - self._ticks_for_removal_response
-        print("Response after ticks:" + str(state['World']['nr_ticks'] - self._ticks_for_removal_response))
-        if ticks_diff > 60:
-            self._change_trait(trustBeliefs, task_name, "competence", -0.1)
-        else:
-            self._change_trait(trustBeliefs, task_name, "competence", 0.1)
+        if self._ticks_started:
+            ticks_diff = state['World']['nr_ticks'] - self._ticks_for_removal_response
+            print("Response after ticks:" + str(state['World']['nr_ticks'] - self._ticks_for_removal_response))
+            if ticks_diff > 60:
+                self._change_trait(trustBeliefs, task_name, "competence", -0.1)
+            else:
+                self._change_trait(trustBeliefs, task_name, "competence", 0.1)
+
+        self._ticks_started = False
 
     def _send_message(self, mssg, sender):
         '''
