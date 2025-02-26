@@ -78,6 +78,7 @@ class BaselineAgent(ArtificialBrain):
         self._supposed_to_remove = False
         self._ticks_for_removal_response = 0
         self._ticks_started = False
+        self._picked_up_victim = False
 
     def initialize(self):
         # Initialization of the state tracker and navigation algorithm
@@ -621,6 +622,8 @@ class BaselineAgent(ArtificialBrain):
                                         clock - extra time when rescuing alone: 15 seconds \n afstand - distance between us: ' + self._distance_human,
                                                       'RescueBot')
                                     self._waiting = True
+                                    self._ticks_for_removal_response = state['World']['nr_ticks']
+                                    self._ticks_started = True
 
                                 if 'critical' in vic and self._answered == False and not self._waiting:
                                     self._send_message('Found ' + vic + ' in ' + self._door['room_name'] + '. Please decide whether to "Rescue" or "Continue" searching. \n\n \
@@ -630,6 +633,8 @@ class BaselineAgent(ArtificialBrain):
                                         self._collected_victims) + '\n \
                                         afstand - distance between us: ' + self._distance_human, 'RescueBot')
                                     self._waiting = True
+                                    self._ticks_for_removal_response = state['World']['nr_ticks']
+                                    self._ticks_started = True
                                     # Execute move actions to explore the area
                     return action, {}
 
@@ -654,9 +659,11 @@ class BaselineAgent(ArtificialBrain):
                 # Make a plan to rescue a found critically injured victim if the human decides so
                 if self.received_messages_content and self.received_messages_content[
                     -1] == 'Rescue' and 'critical' in self._recent_vic:
+                    self._check_responsiveness(state, trustBeliefs, self.task_names[2])
                     self._rescue = 'together'
                     self._answered = True
                     self._waiting = False
+                    self._change_trait(trustBeliefs, self.task_names[2], "willingness", 0.4)
                     # Tell the human to come over and help carry the critically injured victim
                     if not state[{'is_human_agent': True}]:
                         self._send_message('Please come to ' + str(self._door['room_name']) + ' to carry ' + str(
@@ -672,9 +679,11 @@ class BaselineAgent(ArtificialBrain):
                 # Make a plan to rescue a found mildly injured victim together if the human decides so
                 if self.received_messages_content and self.received_messages_content[
                     -1] == 'Rescue together' and 'mild' in self._recent_vic:
+                    self._check_responsiveness(state, trustBeliefs, self.task_names[2])
                     self._rescue = 'together'
                     self._answered = True
                     self._waiting = False
+                    self._change_trait(trustBeliefs, self.task_names[2], "willingness", 0.2)
                     # Tell the human to come over and help carry the mildly injured victim
                     if not state[{'is_human_agent': True}]:
                         self._send_message('Please come to ' + str(self._door['room_name']) + ' to carry ' + str(
@@ -690,9 +699,11 @@ class BaselineAgent(ArtificialBrain):
                 # Make a plan to rescue the mildly injured victim alone if the human decides so, and communicate this to the human
                 if self.received_messages_content and self.received_messages_content[
                     -1] == 'Rescue alone' and 'mild' in self._recent_vic:
+                    self._check_responsiveness(state, trustBeliefs, self.task_names[2])
                     self._send_message('Picking up ' + self._recent_vic + ' in ' + self._door['room_name'] + '.',
                                       'RescueBot')
                     self._rescue = 'alone'
+                    self._change_trait(trustBeliefs, self.task_names[2], "willingness", -0.2)
                     self._answered = True
                     self._waiting = False
                     self._goal_vic = self._recent_vic
@@ -700,7 +711,17 @@ class BaselineAgent(ArtificialBrain):
                     self._recent_vic = None
                     self._phase = Phase.PLAN_PATH_TO_VICTIM
                 # Continue searching other areas if the human decides so
-                if self.received_messages_content and self.received_messages_content[-1] == 'Continue':
+                if self.received_messages_content and self.received_messages_content[-1] == 'Continue' and 'mild' in self._recent_vic:
+                    self._check_responsiveness(state, trustBeliefs, self.task_names[1])
+                    self._change_trait(trustBeliefs, self.task_names[2], "willingness", -0.3)
+                    self._answered = True
+                    self._waiting = False
+                    self._todo.append(self._recent_vic)
+                    self._recent_vic = None
+                    self._phase = Phase.FIND_NEXT_GOAL
+                if self.received_messages_content and self.received_messages_content[-1] == 'Continue' and 'critical' in self._recent_vic:
+                    self._check_responsiveness(state, trustBeliefs, self.task_names[2])
+                    self._change_trait(trustBeliefs, self.task_names[2], "willingness", -0.4)
                     self._answered = True
                     self._waiting = False
                     self._todo.append(self._recent_vic)
@@ -709,6 +730,7 @@ class BaselineAgent(ArtificialBrain):
                 # Remain idle untill the human communicates to the agent what to do with the found victim
                 if self.received_messages_content and self._waiting and self.received_messages_content[
                     -1] != 'Rescue' and self.received_messages_content[-1] != 'Continue':
+                    self._check_responsiveness(state, trustBeliefs, self.task_names[2])
                     return None, {}
                 # Find the next area to search when the agent is not waiting for an answer from the human or occupied with rescuing a victim
                 if not self._waiting and not self._rescue:
@@ -771,6 +793,8 @@ class BaselineAgent(ArtificialBrain):
                 if len(objects) == 0 and 'critical' in self._goal_vic or len(
                         objects) == 0 and 'mild' in self._goal_vic and self._rescue == 'together':
                     self._waiting = False
+                    # Human saves a victim together with robot
+                    self._change_trait(trustBeliefs, self.task_names[2], "competence", 0.3)
                     if self._goal_vic not in self._collected_victims:
                         self._collected_victims.append(self._goal_vic)
                     self._carrying_together = True
@@ -843,9 +867,17 @@ class BaselineAgent(ArtificialBrain):
             for member in teamMembers:
                 if mssg.from_id == member:
                     receivedMessages[member].append(mssg.content)
+
+        # if (self._picked_up_victim and mssgs[-2].startswith('Collect') and not mssgs[-1].startswith('Dropped')) and not (self._picked_up_victim and condition == 'strong' and mssgs[-2].startswith('Collect') and mssgs[-1].startswith('Collect')):
+        #     self._change_trait(trustBeliefs, self.task_names[2], "competence", -0.4)
+        #     self._picked_up_victim = False        
+        
         # Check the content of the received messages
+
         for mssgs in receivedMessages.values():
+            previous_msg = None
             for msg in mssgs:
+
                 # If a received message involves team members searching areas, add these areas to the memory of areas that have been explored
                 if msg.startswith("Search:"):
                     if self._supposed_to_remove:
@@ -853,8 +885,12 @@ class BaselineAgent(ArtificialBrain):
                         self._supposed_to_remove = False
                     area = 'area ' + msg.split()[-1]
                     if area not in self._searched_rooms:
+                        if self._picked_up_victim and previous_msg and previous_msg.startswith('Collect:'):
+                            self._change_trait(trustBeliefs, self.task_names[2], "competence", -0.4)
+                            self._picked_up_victim = False
                         self._searched_rooms.append(area)
                         self._change_trait(trustBeliefs, self.task_names[0], "willingness", 0.3)
+                        
                 # If a received message involves team members finding victims, add these victims and their locations to memory
                 if msg.startswith("Found:"):
                     if self._supposed_to_remove:
@@ -871,6 +907,9 @@ class BaselineAgent(ArtificialBrain):
                         self._searched_rooms.append(loc)
                     # Add the victim and its location to memory
                     if foundVic not in self._found_victims:
+                        if self._picked_up_victim and previous_msg and previous_msg.startswith('Collect:'):
+                            self._change_trait(trustBeliefs, self.task_names[2], "competence", -0.4)
+                            self._picked_up_victim = False
                         self._found_victims.append(foundVic)
                         self._found_victim_logs[foundVic] = {'room': loc}
                         self._change_trait(trustBeliefs, self.task_names[0], "competence", 0.3)
@@ -900,11 +939,18 @@ class BaselineAgent(ArtificialBrain):
                     if collectVic not in self._found_victims:
                         self._found_victims.append(collectVic)
                         self._found_victim_logs[collectVic] = {'room': loc}
+                        self._change_trait(trustBeliefs, self.task_names[0], "competence", 0.3)
+                        self._picked_up_victim = True
+
                     if collectVic in self._found_victims and self._found_victim_logs[collectVic]['room'] != loc:
                         self._found_victim_logs[collectVic] = {'room': loc}
                     # Add the victim to the memory of rescued victims when the human's condition is not weak
                     if condition != 'weak' and collectVic not in self._collected_victims:
+                        if self._picked_up_victim and condition != 'strong' and previous_msg and previous_msg.startswith('Collect:'):
+                            self._change_trait(trustBeliefs, self.task_names[2], "competence", -0.4)
+                            self._picked_up_victim = False
                         self._collected_victims.append(collectVic)
+                        self._picked_up_victim = True
                     # Decide to help the human carry the victim together when the human's condition is weak
                     if condition == 'weak':
                         self._rescue = 'together'
@@ -950,6 +996,12 @@ class BaselineAgent(ArtificialBrain):
                     self._change_trait(trustBeliefs, self.task_names[1], "competence", 0.3)
                     self._supposed_to_remove = False
                     self.received_messages = [mssg for mssg in self.received_messages if not mssg.content.startswith("Removed")]
+                if msg.startswith("Dropped"):
+                    self._change_trait(trustBeliefs, self.task_names[2], "competence", 0.3)
+                    self._picked_up_victim = False
+                    self.received_messages = [mssg for mssg in self.received_messages if not mssg.content.startswith("Dropped")]
+                previous_msg = msg
+
             # Store the current location of the human in memory
             if mssgs and mssgs[-1].split()[-1] in ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13',
                                                    '14']:
