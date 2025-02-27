@@ -989,10 +989,16 @@ class BaselineAgent(ArtificialBrain):
                     if self._supposed_to_remove:
                         self._change_trait(trustBeliefs, self.task_names[1], "competence", -0.4)
                         self._supposed_to_remove = False
+                    if self._picked_up_victim and previous_msg and previous_msg.startswith('Collect:'):
+                            self._change_trait(trustBeliefs, self.task_names[2], "competence", -0.4)
+                            self._picked_up_victim = False
                     self._change_trait(trustBeliefs, self.task_names[1], "willingness", 0.1)
                     self._supposed_to_remove = True
                     self.received_messages = [mssg for mssg in self.received_messages if not mssg.content.startswith("Detected")]
                 if msg.startswith("Removed"):
+                    if self._picked_up_victim and previous_msg and previous_msg.startswith('Collect:'):
+                            self._change_trait(trustBeliefs, self.task_names[2], "competence", -0.4)
+                            self._picked_up_victim = False
                     self._change_trait(trustBeliefs, self.task_names[1], "competence", 0.3)
                     self._supposed_to_remove = False
                     self.received_messages = [mssg for mssg in self.received_messages if not mssg.content.startswith("Removed")]
