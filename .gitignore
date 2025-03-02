@@ -1,0 +1,9 @@
+actions1/__pycache__/CustomActions.cpython-38.pyc
+actions1/__pycache__/CustomActions.cpython-39.pyc
+beliefs/currentTrustBelief.csv
+brains1/__pycache__/ArtificialBrain.cpython-39.pyc
+*.pyc
+*.pyc
+logs/exp_normal_at_time_15h-23m-49s_date_02d-03m-2025y/world_1/actions__2025-03-02_152349.csv
+beliefs/currentTrustBelief.csv
+worlds1/__pycache__/WorldBuilder.cpython-38.pyc
