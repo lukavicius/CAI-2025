@@ -15,6 +15,8 @@ from matrx.actions.move_actions import MoveNorth
 from matrx.messages.message import Message
 from matrx.messages.message_manager import MessageManager
 from actions1.CustomActions import RemoveObjectTogether, CarryObjectTogether, DropObjectTogether, CarryObject, Drop
+import csv
+import os
 
 
 class Phase(enum.Enum):
@@ -104,9 +106,9 @@ class BaselineAgent(ArtificialBrain):
                     self._received_messages.append(mssg.content)
         # Initialize and update trust beliefs for team members
         trustBeliefs = self._loadBelief(self._team_members, self._folder)
+        self._log_trust_belief(trustBeliefs, state['World']['nr_ticks'])
         # Process messages from team members
         self._process_messages(state, self._team_members, self._condition, trustBeliefs)
-        self._trustBelief(self._team_members, trustBeliefs, self._folder, self._received_messages)
 
         # Check whether human is close in distance
         if state[{'is_human_agent': True}]:
@@ -128,7 +130,7 @@ class BaselineAgent(ArtificialBrain):
         if self._agent_loc in [3, 4, 7, 10, 13, 14]:
             self._distance_drop = 'close'
 
-        # Check whether victims are currently being carried together by human and agent 
+        # Check whether victims are currently being carried together by human and agent
         for info in state.values():
             if 'is_human_agent' in info and self._human_name in info['name'] and len(
                     info['is_carrying']) > 0 and 'critical' in info['is_carrying'][0]['obj_id'] or \
@@ -353,7 +355,7 @@ class BaselineAgent(ArtificialBrain):
                     action = self._navigator.get_move_action(self._state_tracker)
                     # Check for obstacles blocking the path to the area and handle them if needed
                     if action is not None:
-                        # Remove obstacles blocking the path to the area 
+                        # Remove obstacles blocking the path to the area
                         for info in state.values():
                             if 'class_inheritance' in info and 'ObstacleObject' in info[
                                 'class_inheritance'] and 'stone' in info['obj_id'] and info['location'] not in [(9, 4),
@@ -402,6 +404,8 @@ class BaselineAgent(ArtificialBrain):
                         # Wait for the human to help removing the obstacle and remove the obstacle together
                         if self.received_messages_content and self.received_messages_content[
                             -1] == 'Remove' or self._remove:
+                            if self._ticks_started:
+                                self._change_trait(trustBeliefs, self.task_names[1], "willingness", 0.3)
                             self._check_responsiveness(state, trustBeliefs, self.task_names[1])
                             if not self._remove:
                                 self._answered = True
@@ -415,7 +419,7 @@ class BaselineAgent(ArtificialBrain):
                                 self._send_message('Lets remove rock blocking ' + str(self._door['room_name']) + '!',
                                                   'RescueBot')
                                 return None, {}
-                        # Remain idle untill the human communicates what to do with the identified obstacle 
+                        # Remain idle untill the human communicates what to do with the identified obstacle
                         else:
                             return None, {}
 
@@ -475,7 +479,7 @@ class BaselineAgent(ArtificialBrain):
                             self._waiting = True
                             self._ticks_for_removal_response = state['World']['nr_ticks']
                             self._ticks_started = True
-                        # Determine the next area to explore if the human tells the agent not to remove the obstacle          
+                        # Determine the next area to explore if the human tells the agent not to remove the obstacle
                         if self.received_messages_content and self.received_messages_content[
                             -1] == 'Continue' and not self._remove:
                             self._change_trait(trustBeliefs, self.task_names[1], "willingness", -0.4)
@@ -1018,7 +1022,7 @@ class BaselineAgent(ArtificialBrain):
         trustfile_header = []
         trustfile_contents = []
         # Check if agent already collaborated with this human before, if yes: load the corresponding trust values, if no: initialize using default trust values
-        with open(folder + '/beliefs/allTrustBeliefs.csv') as csvfile:
+        with open(folder + '/beliefs/currentTrustBelief.csv') as csvfile:
             reader = csv.reader(csvfile, delimiter=';', quotechar="'")
             for row in reader:
                 if trustfile_header == []:
@@ -1027,7 +1031,7 @@ class BaselineAgent(ArtificialBrain):
                 # Retrieve trust values 
                 if row and row[0] == self._human_name:
                     name = row[0]
-                    task = string(row[1])
+                    task = row[1]
                     competence = float(row[2])
                     willingness = float(row[3])
                     trustBeliefs[name + task] = {'competence': competence, 'willingness': willingness}
@@ -1040,7 +1044,26 @@ class BaselineAgent(ArtificialBrain):
                     trustBeliefs[self._human_name + self.task_names[2]] = {'competence': competence, 'willingness': willingness}
         return trustBeliefs
 
-    def _trustBelief(self, members, trustBeliefs, folder, receivedMessages):
+    def _log_trust_belief(self, trust_beliefs, ticks):
+        file_path = os.path.join(self._folder, 'beliefs/trustBeliefLog' + self._human_name + '.csv')
+
+        # Check if the file exists to determine if we need to write headers
+        file_exists = os.path.isfile(file_path)
+
+        with open(file_path, mode='a', newline='') as csv_file:  # Open in append mode
+            csv_writer = csv.writer(csv_file, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+
+            # Write header only if the file does not exist
+            if not file_exists:
+                headers = ['ticks'] + ['name'] + [task + '_competence' for task in self.task_names] + [task + '_willingness' for task in self.task_names]
+                csv_writer.writerow(headers)
+
+            # Log trust belief values in a single row
+            row = [ticks] + [self._human_name] + [trust_beliefs[self._human_name + task]['competence'] for task in self.task_names] + \
+                  [trust_beliefs[self._human_name + task]['willingness'] for task in self.task_names]
+            csv_writer.writerow(row)
+
+    def _trustBelief(self, trustBeliefs, folder):
         '''
         Baseline implementation of a trust belief. Creates a dictionary with trust belief scores for each team member, for example based on the received messages.
         '''
@@ -1061,13 +1084,13 @@ class BaselineAgent(ArtificialBrain):
                                  trustBeliefs[self._human_name + self.task_names[1]]['willingness']])
             csv_writer.writerow([self._human_name, self.task_names[2], trustBeliefs[self._human_name + self.task_names[2]]['competence'],
                                  trustBeliefs[self._human_name + self.task_names[2]]['willingness']])
-
         return trustBeliefs
 
     def _change_trait(self, trustBeliefs, task_name, trait, difference):
         trustBeliefs[self._human_name + task_name][trait] += difference
         trustBeliefs[self._human_name + task_name][trait] = np.clip(trustBeliefs[self._human_name + task_name][trait], -1, 1)
         print(self._human_name + " for " + task_name + " impacted " + trait + " by " + str(difference))
+        self._trustBelief(trustBeliefs, self._folder)
 
     def _check_responsiveness(self, state, trustBeliefs, task_name):
         if self._ticks_started:
