@@ -39,7 +39,38 @@ class Phase(enum.Enum):
     FIX_ORDER_DROP = 17,
     REMOVE_OBSTACLE_IF_NEEDED = 18,
     ENTER_ROOM = 19
+    PICK_RESEARCHED_ROOM = 20
 
+class ProbabilisticTrust:
+    def __init__(self, initial_alpha=1, initial_beta=1):
+        """
+        Initializes a probabilistic trust model using a Beta distribution.
+        """
+        self.alpha = initial_alpha  # Successful human interactions
+        self.beta = initial_beta  # Unsuccessful human interactions
+    
+    def update_trust(self, human_was_reliable):
+        """
+        Updates trust using Bayesian updating:
+        - Increases α if the human was reliable.
+        - Increases β if the human was unreliable.
+        """
+        if human_was_reliable: self.alpha += 1  # More evidence of reliability
+        else: self.beta += 1  # More evidence of unreliability
+
+    def get_trust_level(self):
+        """
+        Returns the mean trust level as a probability estimate.
+        """
+        return self.alpha / (self.alpha + self.beta)
+
+    def should_trust(self, risk_factor=0.5):
+        """
+        Determines whether the agent should trust the human for a decision.
+        - Samples from the Beta distribution instead of using a fixed threshold.
+        """
+        sampled_trust = np.random.beta(self.alpha, self.beta)
+        return sampled_trust > risk_factor  # Trust if sample is high enough
 
 class BaselineAgent(ArtificialBrain):
     def __init__(self, slowdown, condition, name, folder):
@@ -81,6 +112,17 @@ class BaselineAgent(ArtificialBrain):
         self._ticks_for_removal_response = 0
         self._ticks_started = False
         self._picked_up_victim = False
+
+        self._recheck_human_search = False 
+        self._remove_alone = False
+        self._rescue_alone = False
+
+        self._should_help_rescue = True
+        self._should_help_remove_obstacle = True
+        self._should_add_found_victim = True
+
+        self._processed_messages = set() 
+
         self._obstacle_found_ticks = 0
 
     def initialize(self):
@@ -109,6 +151,7 @@ class BaselineAgent(ArtificialBrain):
         self._log_trust_belief(trustBeliefs, state['World']['nr_ticks'])
         # Process messages from team members
         self._process_messages(state, self._team_members, self._condition, trustBeliefs)
+        self._adjust_behavior_based_on_trust(trustBeliefs)
 
         # Check whether human is close in distance
         if state[{'is_human_agent': True}]:
@@ -165,6 +208,12 @@ class BaselineAgent(ArtificialBrain):
                     return None, {}
 
             if Phase.FIND_NEXT_GOAL == self._phase:
+                if self._recheck_human_search:
+                    self._send_message("Rechecking areas due to previous unreliable reports.", "RescueBot")
+                    self._phase = Phase.PICK_RESEARCHED_ROOM
+                else:
+                    self._phase = Phase.PICK_UNSEARCHED_ROOM
+
                 # Definition of some relevant variables
                 self._answered = False
                 self._goal_vic = None
@@ -376,6 +425,15 @@ class BaselineAgent(ArtificialBrain):
                 agent_location = state[self.agent_id]['location']
                 # Identify which obstacle is blocking the entrance
                 for info in state.values():
+                    if 'class_inheritance' in info and 'ObstacleObject' in info['class_inheritance']:
+                        if self._remove_alone:
+                            self._send_message("Removing obstacle alone due to low cooperation.", "RescueBot")
+                            return RemoveObject.__name__, {'object_id': info['obj_id']}
+
+                        if self._wait_for_human and not state[{'is_human_agent': True}]:
+                            self._send_message("Waiting for you to remove the obstacle.", "RescueBot")
+                            return None, {}
+
                     if 'class_inheritance' in info and 'ObstacleObject' in info['class_inheritance'] and 'rock' in info[
                         'obj_id']:
                         objects.append(info)
@@ -766,6 +824,12 @@ class BaselineAgent(ArtificialBrain):
                     self._phase = Phase.TAKE_VICTIM
 
             if Phase.TAKE_VICTIM == self._phase:
+                if self._rescue_alone:
+                    self._send_message("Rescuing victim alone since cooperation is unreliable.", "RescueBot")
+                    self._rescue = 'alone'
+                else:
+                    self._send_message("Let's rescue together!", "RescueBot")
+                    self._rescue = 'together'
                 # Store all area tiles in a list
                 room_tiles = [info['location'] for info in state.values()
                              if 'class_inheritance' in info
@@ -846,6 +910,14 @@ class BaselineAgent(ArtificialBrain):
                 # Drop the victim on the correct location on the drop zone
                 return Drop.__name__, {'human_name': self._human_name}
 
+            if Phase.PICK_RESEARCHED_ROOM == self._phase:
+                for room in self._searched_rooms:
+                    if room not in self._to_search:
+                        self._to_search.append(room)
+                        self._send_message(f"Rechecking {room} due to previous unreliable reports.", "RescueBot")
+                        break
+                self._phase = Phase.FIND_NEXT_GOAL
+
     def _get_drop_zones(self, state):
         '''
         @return list of drop zones (their full dict), in order (the first one is the
@@ -872,10 +944,17 @@ class BaselineAgent(ArtificialBrain):
         # Create a dictionary with a list of received messages from each team member
         for member in teamMembers:
             receivedMessages[member] = []
+        # for mssg in self.received_messages:
+        #     for member in teamMembers:
+        #         if mssg.from_id == member:
+        #             receivedMessages[member].append(mssg.content)
+
         for mssg in self.received_messages:
-            for member in teamMembers:
-                if mssg.from_id == member:
-                    receivedMessages[member].append(mssg.content)
+            if mssg.content not in self._processed_messages:
+                for member in teamMembers:
+                    if mssg.from_id == member:
+                        receivedMessages[member].append(mssg.content)
+                        self._processed_messages.add(mssg.content)
 
         # if (self._picked_up_victim and mssgs[-2].startswith('Collect') and not mssgs[-1].startswith('Dropped')) and not (self._picked_up_victim and condition == 'strong' and mssgs[-2].startswith('Collect') and mssgs[-1].startswith('Collect')):
         #     self._change_trait(trustBeliefs, self.task_names[2], "competence", -0.4)
@@ -913,8 +992,10 @@ class BaselineAgent(ArtificialBrain):
                         if self._picked_up_victim and previous_msg and previous_msg.startswith('Collect:'):
                             self._change_trait(trustBeliefs, self.task_names[2], "competence", -0.4)
                             self._picked_up_victim = False
-                        self._found_victims.append(foundVic)
-                        self._found_victim_logs[foundVic] = {'room': loc}
+                        if self._should_add_found_victim:
+                            self._send_message("I will not consider this victim as found.", "RescueBot")
+                            self._found_victims.append(foundVic)
+                            self._found_victim_logs[foundVic] = {'room': loc}
                         self._change_trait(trustBeliefs, self.task_names[0], "competence", 0.3)
                     if foundVic in self._found_victims and self._found_victim_logs[foundVic]['room'] != loc:
                         self._found_victim_logs[foundVic] = {'room': loc}
@@ -953,11 +1034,19 @@ class BaselineAgent(ArtificialBrain):
                         self._picked_up_victim = True
                     # Decide to help the human carry the victim together when the human's condition is weak
                     if condition == 'weak':
+                        if self._should_help_rescue == False:
+                            self._send_message("I cannot help with rescuing the victim.", "RescueBot")
+                            return
                         self._rescue = 'together'
                 # If a received message involves team members asking for help with removing obstacles, add their location to memory and come over
                 if msg.startswith('Remove:'):
                     self._change_trait(trustBeliefs, self.task_names[1], "competence", 0.3)
                     self._supposed_to_remove = False
+
+                    if not self._should_help_remove_obstacle:
+                        self._send_message("I cannot help with obstacle removal.", "RescueBot")
+                        return
+                
                     # Come over immediately when the agent is not carrying a victim
                     if not self._carrying:
                         # Identify at which location the human needs help
@@ -1150,3 +1239,82 @@ class BaselineAgent(ArtificialBrain):
             else:
                 locs.append((x[i], max(y)))
         return locs
+    
+    def _adjust_behavior_based_on_trust(self, trustBeliefs):
+        """
+        Adjusts the agent’s behavior based on the human’s competence and willingness.
+        """
+
+        ## Depending which baseline you are camparing against, uncomment one of the commented return statements, 
+        ## and comment out the rest of the method.
+
+        # NEVER-TRUST
+        # return True
+        
+        # ALWAYS-TRUST
+        # return False
+        
+        # RANDOM-TRUST
+        # return np.random.rand() < 0.5
+
+        human = self._human_name
+
+        # Initialize probabilistic trust models if not already created
+        if not hasattr(self, "search_trust"):
+            self.search_trust = ProbabilisticTrust()
+            self.remove_trust = ProbabilisticTrust()
+            self.rescue_trust = ProbabilisticTrust()
+
+        # Normalize the competence and willingess scores from [-1, 1] to [0, 1]
+        search_competence = (trustBeliefs[human + "search"]["competence"] + 1) / 2
+        search_willingness = (trustBeliefs[human + "search"]["willingness"] + 1) / 2
+        remove_competence = (trustBeliefs[human + "remove"]["competence"] + 1) / 2
+        remove_willingness = (trustBeliefs[human + "remove"]["willingness"] + 1) / 2
+        rescue_competence = (trustBeliefs[human + "rescue"]["competence"] + 1) / 2
+        rescue_willingness = (trustBeliefs[human + "rescue"]["willingness"] + 1) / 2
+        
+        # Calculate the average competence and willingness scores
+        average_competence = (search_competence + remove_competence + rescue_competence) / 3
+        average_willingness = (search_willingness + remove_willingness + rescue_willingness) / 3
+
+        # Update trust scores based on recent performance
+        search_reliable = np.random.rand() < (0.2 * np.mean([average_competence, average_willingness]) + 0.8 * np.mean([search_competence, search_willingness]))
+        remove_reliable = np.random.rand() < (0.2 * np.mean([average_competence, average_willingness]) + 0.8 * np.mean([remove_competence, remove_willingness]))
+        rescue_reliable = np.random.rand() < (0.2 * np.mean([average_competence, average_willingness]) + 0.8 * np.mean([rescue_competence, rescue_willingness]))
+
+        self.search_trust.update_trust(search_reliable)
+        self.remove_trust.update_trust(remove_reliable)
+        self.rescue_trust.update_trust(rescue_reliable)
+        
+        # Search decision (whether to recheck areas)   
+        if not self.search_trust.should_trust(risk_factor=0.5):
+            # self._send_message("I will double-check the areas you searched.", "RescueBot")
+            self._recheck_human_search = True
+            self._should_add_found_victim = False
+        else:
+            self._recheck_human_search = False
+            self._should_add_found_victim = True
+
+        # Obstacle removal decision
+        if not self.remove_trust.should_trust(risk_factor=0.6):
+            # self._send_message("I will remove obstacles myself since you often do not help.", "RescueBot")
+            self._remove_alone = True
+            self._should_help_rescue = False
+        elif not self.remove_trust.should_trust(risk_factor=0.8):  # Slight trust, still prefers to wait
+            # self._send_message("You can help, but I will handle obstacles if needed.", "RescueBot")
+            self._wait_for_human = True
+        else:
+            self._remove_alone = False
+            self._wait_for_human = False
+            self._should_help_rescue = True
+
+        # Victim rescue decision
+        if not self.rescue_trust.should_trust(risk_factor=0.4):
+            # self._send_message("I will prioritize rescuing victims myself.", "RescueBot")
+            self._rescue_alone = True
+            self._should_help_remove_obstacle = False
+        else:
+            self._rescue_alone = False
+            self._should_help_remove_obstacle = True
+
+        
