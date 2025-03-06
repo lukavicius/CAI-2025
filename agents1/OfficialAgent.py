@@ -41,37 +41,6 @@ class Phase(enum.Enum):
     ENTER_ROOM = 19
     PICK_RESEARCHED_ROOM = 20
 
-class ProbabilisticTrust:
-    def __init__(self, initial_alpha=1, initial_beta=1):
-        """
-        Initializes a probabilistic trust model using a Beta distribution.
-        """
-        self.alpha = initial_alpha  # Successful human interactions
-        self.beta = initial_beta  # Unsuccessful human interactions
-    
-    def update_trust(self, human_was_reliable):
-        """
-        Updates trust using Bayesian updating:
-        - Increases α if the human was reliable.
-        - Increases β if the human was unreliable.
-        """
-        if human_was_reliable: self.alpha += 1  # More evidence of reliability
-        else: self.beta += 1  # More evidence of unreliability
-
-    def get_trust_level(self):
-        """
-        Returns the mean trust level as a probability estimate.
-        """
-        return self.alpha / (self.alpha + self.beta)
-
-    def should_trust(self, risk_factor=0.5):
-        """
-        Determines whether the agent should trust the human for a decision.
-        - Samples from the Beta distribution instead of using a fixed threshold.
-        """
-        sampled_trust = np.random.beta(self.alpha, self.beta)
-        return sampled_trust > risk_factor  # Trust if sample is high enough
-
 class BaselineAgent(ArtificialBrain):
     def __init__(self, slowdown, condition, name, folder):
         super().__init__(slowdown, condition, name, folder)
@@ -1251,12 +1220,6 @@ class BaselineAgent(ArtificialBrain):
 
         human = self._human_name
 
-        # Initialize probabilistic trust models if not already created
-        if not hasattr(self, "search_trust"):
-            self.search_trust = ProbabilisticTrust()
-            self.remove_trust = ProbabilisticTrust()
-            self.rescue_trust = ProbabilisticTrust()
-
         # Normalize the competence and willingess scores from [-1, 1] to [0, 1]
         search_competence = (trustBeliefs[human + "search"]["competence"] + 1) / 2
         search_willingness = (trustBeliefs[human + "search"]["willingness"] + 1) / 2
@@ -1294,16 +1257,19 @@ class BaselineAgent(ArtificialBrain):
         average_willingness = (search_willingness + remove_willingness + rescue_willingness) / 3
 
         # Update trust scores based on recent performance
-        search_reliable = np.random.rand() < (0.2 * np.mean([average_competence, average_willingness]) + 0.8 * np.mean([search_competence, search_willingness]))
-        remove_reliable = np.random.rand() < (0.2 * np.mean([average_competence, average_willingness]) + 0.8 * np.mean([remove_competence, remove_willingness]))
-        rescue_reliable = np.random.rand() < (0.2 * np.mean([average_competence, average_willingness]) + 0.8 * np.mean([rescue_competence, rescue_willingness]))
+        search_reliable = 0.2 * np.mean([average_competence, average_willingness]) + 0.8 * np.mean([search_competence, search_willingness])
+        remove_reliable = 0.2 * np.mean([average_competence, average_willingness]) + 0.8 * np.mean([remove_competence, remove_willingness])
+        rescue_reliable = 0.2 * np.mean([average_competence, average_willingness]) + 0.8 * np.mean([rescue_competence, rescue_willingness])
 
-        self.search_trust.update_trust(search_reliable)
-        self.remove_trust.update_trust(remove_reliable)
-        self.rescue_trust.update_trust(rescue_reliable)
+        epsilon = 1e-6  # Small value to avoid zero issues
+
+        # Probabilistic trust calculation
+        search_trust = np.random.beta(max(search_reliable, epsilon), max(1 - search_reliable, epsilon))
+        remove_trust = np.random.beta(max(remove_reliable, epsilon), max(1 - remove_reliable, epsilon))
+        rescue_trust = np.random.beta(max(rescue_reliable, epsilon), max(1 - rescue_reliable, epsilon))
         
         # Search decision (whether to recheck areas)   
-        if not self.search_trust.should_trust(risk_factor=0.5):
+        if search_trust < 0.5:
             # self._send_message("I will double-check the areas you searched.", "RescueBot")
             self._recheck_human_search = True
             self._should_add_found_victim = False
@@ -1312,11 +1278,11 @@ class BaselineAgent(ArtificialBrain):
             self._should_add_found_victim = True
 
         # Obstacle removal decision
-        if not self.remove_trust.should_trust(risk_factor=0.6):
+        if remove_trust < 0.6:
             # self._send_message("I will remove obstacles myself since you often do not help.", "RescueBot")
             self._remove_alone = True
             self._should_help_rescue = False
-        elif not self.remove_trust.should_trust(risk_factor=0.8):  # Slight trust, still prefers to wait
+        elif remove_trust < 0.8:  # Slight trust, still prefers to wait
             # self._send_message("You can help, but I will handle obstacles if needed.", "RescueBot")
             self._wait_for_human = True
         else:
@@ -1325,7 +1291,7 @@ class BaselineAgent(ArtificialBrain):
             self._should_help_rescue = True
 
         # Victim rescue decision
-        if not self.rescue_trust.should_trust(risk_factor=0.4):
+        if rescue_trust < 0.4:
             # self._send_message("I will prioritize rescuing victims myself.", "RescueBot")
             self._rescue_alone = True
             self._should_help_remove_obstacle = False
