@@ -708,8 +708,8 @@ class BaselineAgent(ArtificialBrain):
                     self._send_message(self._goal_vic + ' not present in ' + str(self._door[
                                                                                     'room_name']) + ' because I searched the whole area without finding ' + self._goal_vic + '.',
                                       'RescueBot')
-                    self._change_trait(trustBeliefs, self.task_names[0], "willingness", -0.4)
-                    self._change_trait(trustBeliefs, self.task_names[0], "competence", -0.4)
+                    self._change_trait(trustBeliefs, self.task_names[0], "willingness", -0.6)
+                    self._change_trait(trustBeliefs, self.task_names[0], "competence", -0.6)
                     # Remove the victim location from memory
                     self._found_victim_logs.pop(self._goal_vic, None)
                     self._found_victims.remove(self._goal_vic)
@@ -974,7 +974,7 @@ class BaselineAgent(ArtificialBrain):
                             self._change_trait(trustBeliefs, self.task_names[2], "competence", -0.4)
                             self._picked_up_victim = False
                         self._searched_rooms.append(area)
-                        self._change_trait(trustBeliefs, self.task_names[0], "willingness", 0.3)
+                        self._change_trait(trustBeliefs, self.task_names[0], "willingness", 0.2)
                         
                 # If a received message involves team members finding victims, add these victims and their locations to memory
                 if msg.startswith("Found:"):
@@ -995,7 +995,7 @@ class BaselineAgent(ArtificialBrain):
                         if self._should_add_found_victim:
                             self._found_victims.append(foundVic)
                             self._found_victim_logs[foundVic] = {'room': loc}
-                            self._change_trait(trustBeliefs, self.task_names[0], "competence", 0.3)
+                            self._change_trait(trustBeliefs, self.task_names[0], "competence", 0.2)
                         else:
                             self._send_message("I will not consider this victim as found.", "RescueBot")
                     if foundVic in self._found_victims and self._found_victim_logs[foundVic]['room'] != loc:
@@ -1021,7 +1021,7 @@ class BaselineAgent(ArtificialBrain):
                     if collectVic not in self._found_victims:
                         self._found_victims.append(collectVic)
                         self._found_victim_logs[collectVic] = {'room': loc}
-                        self._change_trait(trustBeliefs, self.task_names[0], "competence", 0.3)
+                        self._change_trait(trustBeliefs, self.task_names[0], "competence", 0.2)
                         self._picked_up_victim = True
 
                     if collectVic in self._found_victims and self._found_victim_logs[collectVic]['room'] != loc:
