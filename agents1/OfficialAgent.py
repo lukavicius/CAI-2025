@@ -112,6 +112,7 @@ class BaselineAgent(ArtificialBrain):
         self._ticks_for_removal_response = 0
         self._ticks_started = False
         self._picked_up_victim = False
+        self.previous_msg = None
 
         self._recheck_human_search = False 
         self._remove_alone = False
@@ -936,7 +937,7 @@ class BaselineAgent(ArtificialBrain):
         process incoming messages received from the team members
         '''
 
-        if self._supposed_to_remove and state['World']['nr_ticks'] - self._obstacle_found_ticks > 250:
+        if self._supposed_to_remove and state['World']['nr_ticks'] - self._obstacle_found_ticks > 300:
             self._change_trait(trustBeliefs, self.task_names[1], "competence", -0.4)
             self._supposed_to_remove = False
             self._send_message('You were supposed to remove the obstacle but failed.', 'RescueBot')
@@ -962,15 +963,14 @@ class BaselineAgent(ArtificialBrain):
         
         # Check the content of the received messages
 
-        for mssgs in receivedMessages.values():
-            previous_msg = None
+        for mssgs in receivedMessages.values(): 
             for msg in mssgs:
 
                 # If a received message involves team members searching areas, add these areas to the memory of areas that have been explored
                 if msg.startswith("Search:"):
                     area = 'area ' + msg.split()[-1]
                     if area not in self._searched_rooms:
-                        if self._picked_up_victim and previous_msg and previous_msg.startswith('Collect:'):
+                        if self._picked_up_victim and self.previous_msg and self.previous_msg.startswith('Collect:'):
                             self._change_trait(trustBeliefs, self.task_names[2], "competence", -0.4)
                             self._picked_up_victim = False
                         self._searched_rooms.append(area)
@@ -989,14 +989,15 @@ class BaselineAgent(ArtificialBrain):
                         self._searched_rooms.append(loc)
                     # Add the victim and its location to memory
                     if foundVic not in self._found_victims:
-                        if self._picked_up_victim and previous_msg and previous_msg.startswith('Collect:'):
+                        if self._picked_up_victim and self.previous_msg and self.previous_msg.startswith('Collect:'):
                             self._change_trait(trustBeliefs, self.task_names[2], "competence", -0.4)
                             self._picked_up_victim = False
                         if self._should_add_found_victim:
-                            self._send_message("I will not consider this victim as found.", "RescueBot")
                             self._found_victims.append(foundVic)
                             self._found_victim_logs[foundVic] = {'room': loc}
-                        self._change_trait(trustBeliefs, self.task_names[0], "competence", 0.3)
+                            self._change_trait(trustBeliefs, self.task_names[0], "competence", 0.3)
+                        else:
+                            self._send_message("I will not consider this victim as found.", "RescueBot")
                     if foundVic in self._found_victims and self._found_victim_logs[foundVic]['room'] != loc:
                         self._found_victim_logs[foundVic] = {'room': loc}
                     # Decide to help the human carry a found victim when the human's condition is 'weak'
@@ -1027,7 +1028,7 @@ class BaselineAgent(ArtificialBrain):
                         self._found_victim_logs[collectVic] = {'room': loc}
                     # Add the victim to the memory of rescued victims when the human's condition is not weak
                     if condition != 'weak' and collectVic not in self._collected_victims:
-                        if self._picked_up_victim and condition != 'strong' and previous_msg and previous_msg.startswith('Collect:'):
+                        if self._picked_up_victim and condition != 'strong' and self.previous_msg and self.previous_msg.startswith('Collect:'):
                             self._change_trait(trustBeliefs, self.task_names[2], "competence", -0.4)
                             self._picked_up_victim = False
                         self._collected_victims.append(collectVic)
@@ -1075,7 +1076,7 @@ class BaselineAgent(ArtificialBrain):
                         self._send_message('Will come to ' + area + ' after dropping ' + self._goal_vic + '.',
                                           'RescueBot')
                 if msg.startswith("Detected"):
-                    if self._picked_up_victim and previous_msg and previous_msg.startswith('Collect:'):
+                    if self._picked_up_victim and self.previous_msg and self.previous_msg.startswith('Collect:'):
                             self._change_trait(trustBeliefs, self.task_names[2], "competence", -0.4)
                             self._picked_up_victim = False
                     self._change_trait(trustBeliefs, self.task_names[1], "willingness", 0.1)
@@ -1083,7 +1084,7 @@ class BaselineAgent(ArtificialBrain):
                     self._obstacle_found_ticks = state['World']['nr_ticks']
                     self.received_messages = [mssg for mssg in self.received_messages if not mssg.content.startswith("Detected")]
                 if msg.startswith("Removed"):
-                    if self._picked_up_victim and previous_msg and previous_msg.startswith('Collect:'):
+                    if self._picked_up_victim and self.previous_msg and self.previous_msg.startswith('Collect:'):
                             self._change_trait(trustBeliefs, self.task_names[2], "competence", -0.4)
                             self._picked_up_victim = False
                     self._change_trait(trustBeliefs, self.task_names[1], "competence", 0.3)
@@ -1093,7 +1094,7 @@ class BaselineAgent(ArtificialBrain):
                     self._change_trait(trustBeliefs, self.task_names[2], "competence", 0.3)
                     self._picked_up_victim = False
                     self.received_messages = [mssg for mssg in self.received_messages if not mssg.content.startswith("Dropped")]
-                previous_msg = msg
+                self.previous_msg = msg
 
             # Store the current location of the human in memory
             if mssgs and mssgs[-1].split()[-1] in ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13',
