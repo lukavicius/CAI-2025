@@ -774,7 +774,7 @@ class BaselineAgent(ArtificialBrain):
                     self._recent_vic = None
                     self._phase = Phase.PLAN_PATH_TO_VICTIM
                 # Continue searching other areas if the human decides so
-                if self.received_messages_content and self.received_messages_content[-1] == 'Continue' and 'mild' in self._recent_vic:
+                if self.received_messages_content and self.received_messages_content[-1] == 'Continue' and self._recent_vic and 'mild' in self._recent_vic:
                     self._check_responsiveness(state, trustBeliefs, self.task_names[1])
                     self._change_trait(trustBeliefs, self.task_names[2], "willingness", -0.3)
                     self._answered = True
@@ -782,7 +782,7 @@ class BaselineAgent(ArtificialBrain):
                     self._todo.append(self._recent_vic)
                     self._recent_vic = None
                     self._phase = Phase.FIND_NEXT_GOAL
-                if self.received_messages_content and self.received_messages_content[-1] == 'Continue' and 'critical' in self._recent_vic:
+                if self.received_messages_content and self.received_messages_content[-1] == 'Continue' and self._recent_vic and 'critical' in self._recent_vic:
                     self._check_responsiveness(state, trustBeliefs, self.task_names[2])
                     self._change_trait(trustBeliefs, self.task_names[2], "willingness", -0.4)
                     self._answered = True
