@@ -1185,7 +1185,7 @@ class BaselineAgent(ArtificialBrain):
         if self._ticks_started:
             ticks_diff = state['World']['nr_ticks'] - self._ticks_for_removal_response
             print("Response after ticks:" + str(state['World']['nr_ticks'] - self._ticks_for_removal_response))
-            if ticks_diff > 60:
+            if ticks_diff > 130:
                 self._change_trait(trustBeliefs, task_name, "competence", -0.1)
             else:
                 self._change_trait(trustBeliefs, task_name, "competence", 0.1)
