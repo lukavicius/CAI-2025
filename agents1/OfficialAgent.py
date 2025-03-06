@@ -1248,15 +1248,6 @@ class BaselineAgent(ArtificialBrain):
         ## Depending which baseline you are camparing against, uncomment one of the commented return statements, 
         ## and comment out the rest of the method.
 
-        # NEVER-TRUST
-        # return True
-        
-        # ALWAYS-TRUST
-        # return False
-        
-        # RANDOM-TRUST
-        # return np.random.rand() < 0.5
-
         human = self._human_name
 
         # Initialize probabilistic trust models if not already created
@@ -1272,6 +1263,30 @@ class BaselineAgent(ArtificialBrain):
         remove_willingness = (trustBeliefs[human + "remove"]["willingness"] + 1) / 2
         rescue_competence = (trustBeliefs[human + "rescue"]["competence"] + 1) / 2
         rescue_willingness = (trustBeliefs[human + "rescue"]["willingness"] + 1) / 2
+
+#         # Never-trust
+#         search_competence = 0
+#         search_willingness = 0
+#         remove_competence = 0
+#         remove_willingness = 0
+#         rescue_competence = 0
+#         rescue_willingness = 0
+#
+#         # Always-trust
+#         search_competence = 1
+#         search_willingness = 1
+#         remove_competence = 1
+#         remove_willingness = 1
+#         rescue_competence = 1
+#         rescue_willingness = 1
+#
+#         # Random-trust
+#         search_competence = np.random.rand()
+#         search_willingness = np.random.rand()
+#         remove_competence = np.random.rand()
+#         remove_willingness = np.random.rand()
+#         rescue_competence = np.random.rand()
+#         rescue_willingness = np.random.rand()
         
         # Calculate the average competence and willingness scores
         average_competence = (search_competence + remove_competence + rescue_competence) / 3
