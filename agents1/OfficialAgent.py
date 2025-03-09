@@ -120,9 +120,9 @@ class BaselineAgent(ArtificialBrain):
 
         self._should_help_rescue = True
         self._should_help_remove_obstacle = True
-        self._should_add_found_victim = True
+        # self._should_add_found_victim = True
 
-        self._processed_messages = set() 
+        # self._processed_messages = set() 
 
         self._obstacle_found_ticks = 0
 
@@ -951,11 +951,11 @@ class BaselineAgent(ArtificialBrain):
         #             receivedMessages[member].append(mssg.content)
 
         for mssg in self.received_messages:
-            if mssg.content not in self._processed_messages:
-                for member in teamMembers:
-                    if mssg.from_id == member:
-                        receivedMessages[member].append(mssg.content)
-                        self._processed_messages.add(mssg.content)
+            # if mssg.content not in self._processed_messages:
+            for member in teamMembers:
+                if mssg.from_id == member:
+                    receivedMessages[member].append(mssg.content)
+                    # self._processed_messages.add(mssg.content)
 
         # if (self._picked_up_victim and mssgs[-2].startswith('Collect') and not mssgs[-1].startswith('Dropped')) and not (self._picked_up_victim and condition == 'strong' and mssgs[-2].startswith('Collect') and mssgs[-1].startswith('Collect')):
         #     self._change_trait(trustBeliefs, self.task_names[2], "competence", -0.4)
@@ -992,12 +992,12 @@ class BaselineAgent(ArtificialBrain):
                         if self._picked_up_victim and self.previous_msg and self.previous_msg.startswith('Collect:'):
                             self._change_trait(trustBeliefs, self.task_names[2], "competence", -0.4)
                             self._picked_up_victim = False
-                        if self._should_add_found_victim:
+                        # if self._should_add_found_victim:
                             self._found_victims.append(foundVic)
                             self._found_victim_logs[foundVic] = {'room': loc}
                             self._change_trait(trustBeliefs, self.task_names[0], "competence", 0.2)
-                        else:
-                            self._send_message("I will not consider this victim as found.", "RescueBot")
+                        # else:
+                        #     self._send_message("I will not consider this victim as found.", "RescueBot")
                     if foundVic in self._found_victims and self._found_victim_logs[foundVic]['room'] != loc:
                         self._found_victim_logs[foundVic] = {'room': loc}
                     # Decide to help the human carry a found victim when the human's condition is 'weak'
@@ -1306,31 +1306,31 @@ class BaselineAgent(ArtificialBrain):
         if not self.search_trust.should_trust(risk_factor=0.5):
             # self._send_message("I will double-check the areas you searched.", "RescueBot")
             self._recheck_human_search = True
-            self._should_add_found_victim = False
+            # self._should_add_found_victim = False
         else:
             self._recheck_human_search = False
-            self._should_add_found_victim = True
+            # self._should_add_found_victim = True
 
         # Obstacle removal decision
         if not self.remove_trust.should_trust(risk_factor=0.6):
             # self._send_message("I will remove obstacles myself since you often do not help.", "RescueBot")
             self._remove_alone = True
-            self._should_help_rescue = False
+            self._should_help_remove_obstacle = False
+            self._wait_for_human = False
         elif not self.remove_trust.should_trust(risk_factor=0.8):  # Slight trust, still prefers to wait
             # self._send_message("You can help, but I will handle obstacles if needed.", "RescueBot")
-            self._wait_for_human = True
+            self._wait_for_human = False
+            self._should_help_remove_obstacle = False
         else:
             self._remove_alone = False
-            self._wait_for_human = False
-            self._should_help_rescue = True
+            self._wait_for_human = True
+            self._should_help_remove_obstacle = True
 
         # Victim rescue decision
         if not self.rescue_trust.should_trust(risk_factor=0.4):
             # self._send_message("I will prioritize rescuing victims myself.", "RescueBot")
             self._rescue_alone = True
-            self._should_help_remove_obstacle = False
+            self._should_help_rescue = True
         else:
             self._rescue_alone = False
-            self._should_help_remove_obstacle = True
-
-        
+            self._should_help_rescue = True
