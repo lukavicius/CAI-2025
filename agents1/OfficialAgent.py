@@ -1265,29 +1265,29 @@ class BaselineAgent(ArtificialBrain):
         rescue_competence = (trustBeliefs[human + "rescue"]["competence"] + 1) / 2
         rescue_willingness = (trustBeliefs[human + "rescue"]["willingness"] + 1) / 2
 
-#         # Never-trust
-#         search_competence = 0
-#         search_willingness = 0
-#         remove_competence = 0
-#         remove_willingness = 0
-#         rescue_competence = 0
-#         rescue_willingness = 0
-#
-#         # Always-trust
-#         search_competence = 1
-#         search_willingness = 1
-#         remove_competence = 1
-#         remove_willingness = 1
-#         rescue_competence = 1
-#         rescue_willingness = 1
-#
-#         # Random-trust
-#         search_competence = np.random.rand()
-#         search_willingness = np.random.rand()
-#         remove_competence = np.random.rand()
-#         remove_willingness = np.random.rand()
-#         rescue_competence = np.random.rand()
-#         rescue_willingness = np.random.rand()
+        # # Never-trust
+        # search_competence = 0
+        # search_willingness = 0
+        # remove_competence = 0
+        # remove_willingness = 0
+        # rescue_competence = 0
+        # rescue_willingness = 0
+
+        # # Always-trust
+        # search_competence = 1
+        # search_willingness = 1
+        # remove_competence = 1
+        # remove_willingness = 1
+        # rescue_competence = 1
+        # rescue_willingness = 1
+
+        # Random-trust
+        search_competence = np.random.rand()
+        search_willingness = np.random.rand()
+        remove_competence = np.random.rand()
+        remove_willingness = np.random.rand()
+        rescue_competence = np.random.rand()
+        rescue_willingness = np.random.rand()
         
         # Calculate the average competence and willingness scores
         average_competence = (search_competence + remove_competence + rescue_competence) / 3
@@ -1306,31 +1306,33 @@ class BaselineAgent(ArtificialBrain):
         if not self.search_trust.should_trust(risk_factor=0.5):
             # self._send_message("I will double-check the areas you searched.", "RescueBot")
             self._recheck_human_search = True
-            self._should_add_found_victim = False
+            # self._should_add_found_victim = False
         else:
             self._recheck_human_search = False
-            self._should_add_found_victim = True
+            # self._should_add_found_victim = True
 
         # Obstacle removal decision
         if not self.remove_trust.should_trust(risk_factor=0.6):
             # self._send_message("I will remove obstacles myself since you often do not help.", "RescueBot")
             self._remove_alone = True
-            self._should_help_rescue = False
+            self._should_help_remove_obstacle = False
+            self._wait_for_human = False
         elif not self.remove_trust.should_trust(risk_factor=0.8):  # Slight trust, still prefers to wait
             # self._send_message("You can help, but I will handle obstacles if needed.", "RescueBot")
-            self._wait_for_human = True
+            self._wait_for_human = False
+            self._should_help_remove_obstacle = False
         else:
             self._remove_alone = False
-            self._wait_for_human = False
-            self._should_help_rescue = True
+            self._wait_for_human = True
+            self._should_help_remove_obstacle = True
 
         # Victim rescue decision
         if not self.rescue_trust.should_trust(risk_factor=0.4):
             # self._send_message("I will prioritize rescuing victims myself.", "RescueBot")
             self._rescue_alone = True
-            self._should_help_remove_obstacle = False
+            self._should_help_rescue = False
         else:
             self._rescue_alone = False
-            self._should_help_remove_obstacle = True
+            self._should_help_rescue = True
 
         
